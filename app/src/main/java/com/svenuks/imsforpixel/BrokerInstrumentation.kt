@@ -344,7 +344,7 @@ class BrokerInstrumentation : Instrumentation() {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(channelId, "IMS 激活状态", NotificationManager.IMPORTANCE_HIGH)
+            val ch = NotificationChannel(channelId, context.getString(R.string.ims_status_channel), NotificationManager.IMPORTANCE_HIGH)
             notificationManager.createNotificationChannel(ch)
         }
         
@@ -353,17 +353,17 @@ class BrokerInstrumentation : Instrumentation() {
         val slot1 = try { java.io.File(context.filesDir, "ims_status_1.txt").readText().trim().toBoolean() } catch (e: Exception) { false }
         val anyRegistered = slot0 || slot1
         val title = if (isActivate) {
-            if (anyRegistered) "✅ VoLTE 激活成功" else "⚠️ VoLTE 激活完成"
+            if (anyRegistered) context.getString(R.string.volte_activation_success) else context.getString(R.string.volte_activation_complete)
         } else {
-            "✅ 配置已恢复默认"
+            context.getString(R.string.configuration_restored)
         }
         val body = if (isActivate) {
             buildString {
-                if (slot0) append("SIM 1: IMS 已注册  ") else append("SIM 1: IMS 未注册  ")
-                if (slot1) append("SIM 2: IMS 已注册") else append("SIM 2: IMS 未注册")
+                if (slot0) append(context.getString(R.string.sim_ims_registered, 1)) else append(context.getString(R.string.sim_ims_not_registered, 1))
+                if (slot1) append(context.getString(R.string.sim_ims_registered, 2)) else append(context.getString(R.string.sim_ims_not_registered, 2))
             }
         } else {
-            "运营商覆盖配置已清除，请测试通话功能是否正常"
+            context.getString(R.string.carrier_overrides_cleared)
         }
         
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
