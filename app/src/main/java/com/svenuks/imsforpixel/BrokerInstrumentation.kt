@@ -178,6 +178,78 @@ class BrokerInstrumentation : Instrumentation() {
         }
     }
 
+    private fun buildCarrierConfigBundle(
+        volte: Boolean,
+        vonr: Boolean,
+        vowifi: Boolean,
+        crossSim: Boolean,
+        wfcRoaming: Boolean,
+        ssUt: Boolean,
+        showIms: Boolean,
+        allowApn: Boolean
+    ): PersistableBundle {
+        val bundle = PersistableBundle()
+
+        // Base VoLTE / IMS keys.
+        bundle.putBoolean("carrier_volte_available_bool", volte)
+        bundle.putBoolean("carrier_ims_available_bool", volte)
+        bundle.putBoolean("carrier_ims_voice_capability_bool", volte)
+        bundle.putBoolean("carrier_ims_voice_on_cellular_available_bool", volte)
+        bundle.putBoolean("carrier_ims_voice_on_cellular_provisioned_bool", volte)
+        bundle.putBoolean("enhanced_4g_lte_on_by_default_bool", volte)
+        bundle.putBoolean("hide_enhanced_4g_lte_bool", !volte)
+        bundle.putBoolean("editable_enhanced_4g_lte_bool", volte)
+        bundle.putBoolean("carrier_volte_provisioned_bool", volte)
+        bundle.putBoolean("carrier_volte_provisioning_required_bool", false)
+
+        // Some BOOX / Qualcomm devices keep the MMTEL stack bound but still leave the
+        // cellular IMS voice gate disabled unless the IMS capability flags are forced.
+        // These are harmless on Pixel builds because unsupported keys are simply ignored.
+        bundle.putBoolean("carrier_ims_voice_capability_for_cellular_bool", volte)
+
+        // VoNR (5G Calling) overrides
+        bundle.putBoolean("vonr_enabled_bool", vonr)
+        bundle.putBoolean("vonr_setting_visibility_bool", vonr)
+
+        // VoWiFi (Wi-Fi Calling) overrides
+        bundle.putBoolean("carrier_wfc_ims_available_bool", vowifi)
+        bundle.putBoolean("carrier_default_wfc_ims_enabled_bool", vowifi)
+        bundle.putBoolean("carrier_wfc_ims_provisioned_bool", vowifi)
+        bundle.putBoolean("editable_wfc_mode_bool", vowifi)
+        bundle.putBoolean("editable_wfc_roaming_mode_bool", vowifi)
+        bundle.putBoolean("carrier_default_wfc_ims_roaming_enabled_bool", wfcRoaming)
+
+        // Other settings
+        bundle.putBoolean("carrier_cross_sim_ims_available_bool", crossSim)
+        bundle.putBoolean("enable_cross_sim_calling_on_opportunistic_data_bool", crossSim)
+        bundle.putBoolean("carrier_supports_ss_over_ut_bool", ssUt)
+        bundle.putBoolean("show_ims_registration_status_bool", showIms)
+        bundle.putBoolean("allow_adding_apns_bool", allowApn)
+
+        return bundle
+    }
+
+    private fun logVoiceCapabilityState(telephonyManager: TelephonyManager, slotIndex: Int) {
+        val getters = listOf(
+            "isVoiceOverCellularImsEnabled",
+            "isVoLteEnabled",
+            "isVoiceOverWfcImsEnabled",
+            "isImsRegistered"
+        )
+
+        for (getterName in getters) {
+            try {
+                val method = TelephonyManager::class.java.getMethod(getterName)
+                val result = method.invoke(telephonyManager)
+                Log.d(TAG, "Slot $slotIndex Voice state [$getterName] => $result")
+            } catch (_: NoSuchMethodException) {
+                // Some devices expose only a subset of these methods.
+            } catch (e: Throwable) {
+                Log.w(TAG, "Unable to read $getterName for slot $slotIndex", e)
+            }
+        }
+    }
+
     private fun patchAllSimsAndPoll(arguments: Bundle?) {
         val sharedPrefs = context.getSharedPreferences("volte_settings", Context.MODE_PRIVATE)
         val subManager = context.getSystemService(SubscriptionManager::class.java) ?: return
@@ -231,35 +303,19 @@ class BrokerInstrumentation : Instrumentation() {
                 val ssUt = sharedPrefs.getBoolean("ss_ut_slot_$slotIndex", true)
                 val showIms = sharedPrefs.getBoolean("show_ims_slot_$slotIndex", true)
                 val allowApn = sharedPrefs.getBoolean("allow_apn_slot_$slotIndex", false)
-                val bundle = PersistableBundle()
-                // VoLTE enabling & provisioning overrides
-                bundle.putBoolean("carrier_volte_available_bool", volte)
-                bundle.putBoolean("enhanced_4g_lte_on_by_default_bool", volte)
-                bundle.putBoolean("hide_enhanced_4g_lte_bool", !volte)
-                bundle.putBoolean("editable_enhanced_4g_lte_bool", volte)
-                bundle.putBoolean("carrier_volte_provisioned_bool", volte)
-                bundle.putBoolean("carrier_volte_provisioning_required_bool", false)
-
-                // VoNR (5G Calling) overrides
-                bundle.putBoolean("vonr_enabled_bool", vonr)
-                bundle.putBoolean("vonr_setting_visibility_bool", vonr)
-
-                // VoWiFi (Wi-Fi Calling) overrides
-                bundle.putBoolean("carrier_wfc_ims_available_bool", vowifi)
-                bundle.putBoolean("carrier_default_wfc_ims_enabled_bool", vowifi)
-                bundle.putBoolean("carrier_wfc_ims_provisioned_bool", vowifi)
-                bundle.putBoolean("editable_wfc_mode_bool", vowifi)
-                bundle.putBoolean("editable_wfc_roaming_mode_bool", vowifi)
-                bundle.putBoolean("carrier_default_wfc_ims_roaming_enabled_bool", wfcRoaming)
-
-                // Other settings
-                bundle.putBoolean("carrier_cross_sim_ims_available_bool", crossSim)
-                bundle.putBoolean("enable_cross_sim_calling_on_opportunistic_data_bool", crossSim)
-                bundle.putBoolean("carrier_supports_ss_over_ut_bool", ssUt)
-                bundle.putBoolean("show_ims_registration_status_bool", showIms)
-                bundle.putBoolean("allow_adding_apns_bool", allowApn)
+                val bundle = buildCarrierConfigBundle(
+                    volte = volte,
+                    vonr = vonr,
+                    vowifi = vowifi,
+                    crossSim = crossSim,
+                    wfcRoaming = wfcRoaming,
+                    ssUt = ssUt,
+                    showIms = showIms,
+                    allowApn = allowApn
+                )
 
                 Log.d(TAG, "Applying config for slot $slotIndex: VoLTE=$volte, VoNR=$vonr, VoWiFi=$vowifi")
+                logVoiceCapabilityState(telephonyManager, slotIndex)
                 
                 try {
                     val overrideMethod = findMethod(carrierConfigManager, "overrideConfig")
